@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	zone = os.Getenv("TEST_ZONE_NAME")
+	zone               = os.Getenv("TEST_ZONE_NAME")
+	kubeBuilderBinPath = "./_out/kubebuilder/bin/"
 )
 
 func TestRunsSuite(t *testing.T) {
@@ -16,7 +17,8 @@ func TestRunsSuite(t *testing.T) {
 	// snippet of valid configuration that should be included on the
 	// ChallengeRequest passed as part of the test cases.
 
-	fixture := dns.NewFixture(&customDNSProviderSolver{},
+	fixture := dns.NewFixture(&hetznerDNSProviderSolver{},
+		dns.SetBinariesPath(kubeBuilderBinPath),
 		dns.SetResolvedZone(zone),
 		dns.SetAllowAmbientCredentials(false),
 		dns.SetManifestPath("testdata/my-custom-solver"),

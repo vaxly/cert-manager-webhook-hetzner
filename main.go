@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
+	"strings"
 
 	extapi "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	//"k8s.io/client-go/kubernetes"
@@ -26,15 +30,15 @@ func main() {
 	// webhook, where the Name() method will be used to disambiguate between
 	// the different implementations.
 	cmd.RunWebhookServer(GroupName,
-		&customDNSProviderSolver{},
+		&hetznerDNSProviderSolver{},
 	)
 }
 
-// customDNSProviderSolver implements the provider-specific logic needed to
+// hetznerDNSProviderSolver implements the provider-specific logic needed to
 // 'present' an ACME challenge TXT record for your own DNS provider.
 // To do so, it must implement the `github.com/jetstack/cert-manager/pkg/acme/webhook.Solver`
 // interface.
-type customDNSProviderSolver struct {
+type hetznerDNSProviderSolver struct {
 	// If a Kubernetes 'clientset' is needed, you must:
 	// 1. uncomment the additional `client` field in this structure below
 	// 2. uncomment the "k8s.io/client-go/kubernetes" import at the top of the file
@@ -44,7 +48,7 @@ type customDNSProviderSolver struct {
 	//client kubernetes.Clientset
 }
 
-// customDNSProviderConfig is a structure that is used to decode into when
+// hetznerDNSProviderConfig is a structure that is used to decode into when
 // solving a DNS01 challenge.
 // This information is provided by cert-manager, and may be a reference to
 // additional configuration that's needed to solve the challenge for this
@@ -58,14 +62,13 @@ type customDNSProviderSolver struct {
 // You should not include sensitive information here. If credentials need to
 // be used by your provider here, you should reference a Kubernetes Secret
 // resource and fetch these credentials using a Kubernetes clientset.
-type customDNSProviderConfig struct {
+type hetznerDNSProviderConfig struct {
 	// Change the two fields below according to the format of the configuration
 	// to be decoded.
 	// These fields will be set by users in the
 	// `issuer.spec.acme.dns01.providers.webhook.config` field.
 
-	//Email           string `json:"email"`
-	//APIKeySecretRef v1alpha1.SecretKeySelector `json:"apiKeySecretRef"`
+	APIKey string `json:"apiKey"`
 }
 
 // Name is used as the name for this DNS solver when referencing it on the ACME
@@ -74,8 +77,29 @@ type customDNSProviderConfig struct {
 // solvers configured with the same Name() **so long as they do not co-exist
 // within a single webhook deployment**.
 // For example, `cloudflare` may be used as the name of a solver.
-func (c *customDNSProviderSolver) Name() string {
-	return "my-custom-solver"
+func (c *hetznerDNSProviderSolver) Name() string {
+	return "hetzner"
+}
+
+type Zones struct {
+	Zones []Zone `json:"zones"`
+}
+
+type Zone struct {
+	ZoneID string `json:"id"`
+}
+
+type Entries struct {
+	Records []Entry `json:"records"`
+}
+
+type Entry struct {
+	ID     string `json:"id,omitempty"`
+	Name   string `json:"name"`
+	TTL    int    `json:"ttl"`
+	Type   string `json:"type"`
+	Value  string `json:"value"`
+	ZoneID string `json:"zone_id"`
 }
 
 // Present is responsible for actually presenting the DNS record with the
@@ -83,7 +107,7 @@ func (c *customDNSProviderSolver) Name() string {
 // This method should tolerate being called multiple times with the same value.
 // cert-manager itself will later perform a self check to ensure that the
 // solver has correctly configured the DNS provider.
-func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
+func (c *hetznerDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 	cfg, err := loadConfig(ch.Config)
 	if err != nil {
 		return err
@@ -92,6 +116,55 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 	// TODO: do something more useful with the decoded configuration
 	fmt.Printf("Decoded configuration %v", cfg)
 
+	name, zone := c.getDomainAndEntry(ch)
+
+	// Get Zones (GET https://dns.hetzner.com/api/v1/zones)
+	// Create client
+	client := &http.Client{}
+
+	// Create request
+	req, err := http.NewRequest("GET", "https://dns.hetzner.com/api/v1/zones?search_name="+zone, nil)
+	// Headers
+	req.Header.Add("Auth-API-Token", cfg.APIKey)
+
+	// Fetch Request
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("Failure : ", err)
+	}
+
+	// Read Response Body
+	respBody := Zones{}
+	json.NewDecoder(resp.Body).Decode(&respBody)
+
+	// Display Results
+	fmt.Println("response Status : ", resp.Status)
+	fmt.Println("response Headers : ", resp.Header)
+	fmt.Println("response Body : ", respBody.Zones[0].ZoneID)
+
+	// Create DNS
+	entry, err := json.Marshal(Entry{"", name, 300, "TXT", ch.Key, respBody.Zones[0].ZoneID})
+	body := bytes.NewBuffer(entry)
+
+	// Create request
+	req, err = http.NewRequest("POST", "https://dns.hetzner.com/api/v1/records", body)
+	// Headers
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Auth-API-Token", cfg.APIKey)
+
+	// Fetch Request
+	resp, err = client.Do(req)
+	if err != nil {
+		fmt.Println("Failure : ", err)
+	}
+
+	// Read Response Body
+	respBody2, _ := ioutil.ReadAll(resp.Body)
+
+	// Display Results
+	fmt.Println("response Status : ", resp.Status)
+	fmt.Println("response Headers : ", resp.Header)
+	fmt.Println("response Body : ", string(respBody2))
 	// TODO: add code that sets a record in the DNS provider's console
 	return nil
 }
@@ -102,7 +175,89 @@ func (c *customDNSProviderSolver) Present(ch *v1alpha1.ChallengeRequest) error {
 // value provided on the ChallengeRequest should be cleaned up.
 // This is in order to facilitate multiple DNS validations for the same domain
 // concurrently.
-func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
+func (c *hetznerDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
+	cfg, err := loadConfig(ch.Config)
+	if err != nil {
+		return err
+	}
+
+	// TODO: do something more useful with the decoded configuration
+	fmt.Printf("Decoded configuration %v", cfg)
+
+	name, zone := c.getDomainAndEntry(ch)
+
+	// Get Zones (GET https://dns.hetzner.com/api/v1/zones)
+	// Create client
+	client := &http.Client{}
+
+	// Create request
+	zReq, err := http.NewRequest("GET", "https://dns.hetzner.com/api/v1/zones?search_name="+zone, nil)
+	// Headers
+	zReq.Header.Add("Auth-API-Token", cfg.APIKey)
+
+	// Fetch Request
+	zResp, err := client.Do(zReq)
+	if err != nil {
+		fmt.Println("Failure : ", err)
+	}
+
+	// Read Response Body
+	zRespBody := Zones{}
+	json.NewDecoder(zResp.Body).Decode(&zRespBody)
+
+	// Display Results
+	fmt.Println("response Status : ", zResp.Status)
+	fmt.Println("response Headers : ", zResp.Header)
+	fmt.Println("response Body : ", zRespBody.Zones[0].ZoneID)
+	fmt.Println("response Body : ", name)
+
+	// Create request
+	eReq, err := http.NewRequest("GET", "https://dns.hetzner.com/api/v1/records?zone_id="+zRespBody.Zones[0].ZoneID, nil)
+	// Headers
+	eReq.Header.Add("Auth-API-Token", cfg.APIKey)
+
+	// Fetch Request
+	eResp, err := client.Do(eReq)
+	if err != nil {
+		fmt.Println("Failure : ", err)
+	}
+
+	// Read Response Body
+	eRespBody := Entries{}
+	json.NewDecoder(eResp.Body).Decode(&eRespBody)
+
+	// Display Results
+	fmt.Println("response Status : ", eResp.Status)
+	fmt.Println("response Headers : ", eResp.Header)
+	fmt.Println("response Body : ", eRespBody)
+
+	for _, e := range eRespBody.Records {
+		if e.Type == "TXT" && e.Name == name && e.Value == ch.Key {
+			fmt.Println("Found DOMAIN: ", e)
+			// Delete Record (DELETE https://dns.hetzner.com/api/v1/records/1)
+			// Create request
+			req, err := http.NewRequest("DELETE", "https://dns.hetzner.com/api/v1/records/"+e.ID, nil)
+
+			// Headers
+			req.Header.Add("Auth-API-Token", cfg.APIKey)
+
+			// Fetch Request
+			resp, err := client.Do(req)
+
+			if err != nil {
+				fmt.Println("Failure : ", err)
+			}
+
+			// Read Response Body
+			respBody, _ := ioutil.ReadAll(resp.Body)
+
+			// Display Results
+			fmt.Println("response Status : ", resp.Status)
+			fmt.Println("response Headers : ", resp.Header)
+			fmt.Println("response Body : ", string(respBody))
+		}
+	}
+
 	// TODO: add code that deletes a record from the DNS provider's console
 	return nil
 }
@@ -116,25 +271,14 @@ func (c *customDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 // provider accounts.
 // The stopCh can be used to handle early termination of the webhook, in cases
 // where a SIGTERM or similar signal is sent to the webhook process.
-func (c *customDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
-	///// UNCOMMENT THE BELOW CODE TO MAKE A KUBERNETES CLIENTSET AVAILABLE TO
-	///// YOUR CUSTOM DNS PROVIDER
-
-	//cl, err := kubernetes.NewForConfig(kubeClientConfig)
-	//if err != nil {
-	//	return err
-	//}
-	//
-	//c.client = cl
-
-	///// END OF CODE TO MAKE KUBERNETES CLIENTSET AVAILABLE
+func (c *hetznerDNSProviderSolver) Initialize(kubeClientConfig *rest.Config, stopCh <-chan struct{}) error {
 	return nil
 }
 
 // loadConfig is a small helper function that decodes JSON configuration into
 // the typed config struct.
-func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
-	cfg := customDNSProviderConfig{}
+func loadConfig(cfgJSON *extapi.JSON) (hetznerDNSProviderConfig, error) {
+	cfg := hetznerDNSProviderConfig{}
 	// handle the 'base case' where no configuration has been provided
 	if cfgJSON == nil {
 		return cfg, nil
@@ -144,4 +288,12 @@ func loadConfig(cfgJSON *extapi.JSON) (customDNSProviderConfig, error) {
 	}
 
 	return cfg, nil
+}
+
+func (c *hetznerDNSProviderSolver) getDomainAndEntry(ch *v1alpha1.ChallengeRequest) (string, string) {
+	// Both ch.ResolvedZone and ch.ResolvedFQDN end with a dot: '.'
+	entry := strings.TrimSuffix(ch.ResolvedFQDN, ch.ResolvedZone)
+	entry = strings.TrimSuffix(entry, ".")
+	domain := strings.TrimSuffix(ch.ResolvedZone, ".")
+	return entry, domain
 }
