@@ -6,14 +6,14 @@
 # solve the DNS01 challenge.
 # This group name should be **unique**, hence using your own company's domain
 # here is recommended.
-groupName: acme.mycompany.com
+groupName: dns.hetzner.cloud
 
 certManager:
-  namespace: cert-manager
+  namespace: kube-system
   serviceAccountName: cert-manager
 
 image:
-  repository: mycompany/webhook-image
+  repository: mecodia/cert-manager-webhook-hetzner
   tag: latest
   pullPolicy: IfNotPresent
 
