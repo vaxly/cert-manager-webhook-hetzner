@@ -9,7 +9,7 @@
 groupName: dns.hetzner.cloud
 
 certManager:
-  namespace: cert-manager
+  namespace: kube-system
   serviceAccountName: cert-manager
 
 image:
