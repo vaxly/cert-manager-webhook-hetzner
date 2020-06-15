@@ -1,54 +1,148 @@
-# ACME webhook example
+# ACME Webhook for INWX
 
-The ACME issuer type supports an optional 'webhook' solver, which can be used
-to implement custom DNS01 challenge solving logic.
+This project provides a cert-manager ACME Webhook for [Hetzner DNS](https://hetzner.de/) 
+and is based on the [Example Webhook](https://github.com/jetstack/cert-manager-webhook-example)
 
-This is useful if you need to use cert-manager with a DNS provider that is not
-officially supported in cert-manager core.
+This README and the inspiration for this webhook was mostly taken from [Stephan Müllers INWX Webhook](https://gitlab.com/smueller18/cert-manager-webhook-inwx)
 
-## Why not in core?
+## Requirements
 
-As the project & adoption has grown, there has been an influx of DNS provider
-pull requests to our core codebase. As this number has grown, the test matrix
-has become un-maintainable and so, it's not possible for us to certify that
-providers work to a sufficient level.
+-   [helm](https://helm.sh/) >= v3.0.0
+-   [kubernetes](https://kubernetes.io/) >= v1.14.0
+-   [cert-manager](https://cert-manager.io/) >= 0.12.0
 
-By creating this 'interface' between cert-manager and DNS providers, we allow
-users to quickly iterate and test out new integrations, and then packaging
-those up themselves as 'extensions' to cert-manager.
+## Configuration
 
-We can also then provide a standardised 'testing framework', or set of
-conformance tests, which allow us to validate the a DNS provider works as
-expected.
+The following table lists the configurable parameters of the cert-manager chart and their default values.
 
-## Creating your own webhook
+| Parameter | Description | Default |
+| --------- | ----------- | ------- |
+| `groupName` | Group name of the API service. | `dns.hetzner.cloud` |
+| `certManager.namespace` | Namespace where cert-manager is deployed to. | `kube-system` |
+| `certManager.serviceAccountName` | Service account of cert-manager installation. | `cert-manager` |
+| `image.repository` | Image repository | `mecodia/cert-manager-webhook-hetzner` |
+| `image.tag` | Image tag | `latest` |
+| `image.pullPolicy` | Image pull policy | `Always` |
+| `service.type` | API service type | `ClusterIP` |
+| `service.port` | API service port | `443` |
+| `resources` | CPU/memory resource requests/limits | `{}` |
+| `nodeSelector` | Node labels for pod assignment | `{}` |
+| `affinity` | Node affinity for pod assignment | `{}` |
+| `tolerations` | Node tolerations for pod assignment | `[]` |
 
-Webhook's themselves are deployed as Kubernetes API services, in order to allow
-administrators to restrict access to webhooks with Kubernetes RBAC.
+## Installation
 
-This is important, as otherwise it'd be possible for anyone with access to your
-webhook to complete ACME challenge validations and obtain certificates.
+### cert-manager
 
-To make the set up of these webhook's easier, we provide a template repository
-that can be used to get started quickly.
+Follow the [instructions](https://cert-manager.io/docs/installation/) using the cert-manager documentation to install it within your cluster.
 
-### Creating your own repository
+### Webhook
+
+```bash
+git clone https://github.com/mecodia/cert-manager-webhook-hetzner.git
+cd cert-manager-webhook-hetzner
+helm install --namespace kube-system cert-manager-webhook-hetzner ./deploy/hetzner-webhook
+```
+
+**Note**: The kubernetes resources used to install the Webhook should be deployed within the same namespace as the cert-manager.
+
+To uninstall the webhook run
+```bash
+helm uninstall --namespace kube-system cert-manager-webhook-hetzner
+```
+
+## Issuer
+
+Create a `ClusterIssuer` or `Issuer` resource as following:
+```yaml
+apiVersion: cert-manager.io/v1alpha2
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # The ACME server URL
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+
+    # Email address used for ACME registration
+    email: mail@example.com # REPLACE THIS WITH YOUR EMAIL!!!
+
+    # Name of a secret used to store the ACME account private key
+    privateKeySecretRef:
+      name: letsencrypt-staging
+
+    solvers:
+      - dns01:
+          webhook:
+            groupName: dns.hetzner.cloud
+            solverName: hetzner
+            config:
+              APIKey: <YOUR-DNS-API-KEY-HERE>
+```
+
+### Credentials
+For accessing Hetzner DNS API, you need a API Token which you can create in the [DNS Console](https://dns.hetzner.com/settings/api-token).
+
+Currently we don't provide a way to use secrets for you API KEY.
+
+```
+
+### Create a certificate
+
+Finally you can create certificates, for example:
+
+```yaml
+apiVersion: cert-manager.io/v1alpha2
+kind: Certificate
+metadata:
+  name: example-cert
+  namespace: cert-manager
+spec:
+  commonName: example.com
+  dnsNames:
+    - example.com
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-staging
+  secretName: example-cert
+```
+
+## Development
+
+### Requirements
+
+-   [go](https://golang.org/) >= 1.13.0
 
 ### Running the test suite
 
-All DNS providers **must** run the DNS01 provider conformance testing suite,
-else they will have undetermined behaviour when used with cert-manager.
+1. Download test binaries
+    ```bash
+    scripts/fetch-test-binaries.sh
+    ```
 
-**It is essential that you configure and run the test suite when creating a
-DNS01 webhook.**
+1. Create a new test account at [Hetzner DNS Console](https://dns.hetzner.com/) or use an existing account
 
-An example Go test file has been provided in [main_test.go]().
+1. Go to `testdata/config.json` and replace your api key.
 
-You can run the test suite with:
+1. Download dependencies
+    ```bash
+    go mod download
+    ```
+
+1. Run tests with your created domain
+    ```bash
+    TEST_ZONE_NAME="$YOUR_NEW_DOMAIN." go test .
+    ```
+
+### Running the full suite with microk8s
+
+Tested with Ubuntu:
 
 ```bash
-$ TEST_ZONE_NAME=example.com go test .
+sudo snap install microk8s --classic
+sudo microk8s.enable dns rbac
+sudo microk8s.kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v0.12.0/cert-manager.yaml
+sudo microk8s.config > /tmp/microk8s.config
+export KUBECONFIG=/tmp/microk8s.config
+helm install --namespace kube-system cert-manager-webhook-hetzner deploy/hetzner-webhook
 ```
-
-The example file has a number of areas you must fill in and replace with your
-own options in order for tests to pass.
