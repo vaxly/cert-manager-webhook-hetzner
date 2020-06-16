@@ -1,4 +1,4 @@
-# ACME Webhook for INWX
+# ACME Webhook for Hetzner DNS
 
 This project provides a cert-manager ACME Webhook for [Hetzner DNS](https://hetzner.de/) 
 and is based on the [Example Webhook](https://github.com/jetstack/cert-manager-webhook-example)
