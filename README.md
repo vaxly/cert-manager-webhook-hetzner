@@ -1,6 +1,6 @@
 # ACME Webhook for Hetzner DNS
 
-This project provides a cert-manager ACME Webhook for [Hetzner DNS](https://hetzner.de/) 
+This project provides a [cert-manager](https://cert-manager.io) ACME Webhook for [Hetzner DNS](https://hetzner.de/) 
 and is based on the [Example Webhook](https://github.com/jetstack/cert-manager-webhook-example)
 
 This README and the inspiration for this webhook was mostly taken from [Stephan Müllers INWX Webhook](https://gitlab.com/smueller18/cert-manager-webhook-inwx)
@@ -81,11 +81,10 @@ spec:
 ```
 
 ### Credentials
-For accessing Hetzner DNS API, you need a API Token which you can create in the [DNS Console](https://dns.hetzner.com/settings/api-token).
+
+For accessing the Hetzner DNS API, you need an API Token which you can create in the [DNS Console](https://dns.hetzner.com/settings/api-token).
 
 Currently we don't provide a way to use secrets for you API KEY.
-
-```
 
 ### Create a certificate
 
