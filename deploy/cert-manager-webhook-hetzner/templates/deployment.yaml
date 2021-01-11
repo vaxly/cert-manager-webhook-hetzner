@@ -37,12 +37,12 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              scheme: HTTPS
+              scheme: 8443
               path: /healthz
               port: https
           readinessProbe:
             httpGet:
-              scheme: HTTPS
+              scheme: 8443
               path: /healthz
               port: https
           volumeMounts:
