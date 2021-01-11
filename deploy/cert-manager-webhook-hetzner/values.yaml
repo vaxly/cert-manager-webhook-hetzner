@@ -20,6 +20,8 @@ image:
 nameOverride: "webhook-hetzner"
 fullnameOverride: "cert-manager-webhook-hetzner"
 
+replicaCount: 1
+
 service:
   type: ClusterIP
   port: 443
