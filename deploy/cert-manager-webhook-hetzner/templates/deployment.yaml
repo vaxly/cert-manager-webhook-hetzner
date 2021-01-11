@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "cert-manager-webhook-hetzner.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     app: {{ include "cert-manager-webhook-hetzner.name" . }}
     chart: {{ include "cert-manager-webhook-hetzner.chart" . }}
@@ -37,14 +38,14 @@ spec:
               protocol: TCP
           livenessProbe:
             httpGet:
-              scheme: 8443
+              scheme: HTTPS
               path: /healthz
-              port: https
+              port: 8443
           readinessProbe:
             httpGet:
-              scheme: 8443
+              scheme: HTTPS
               path: /healthz
-              port: https
+              port: 8443
           volumeMounts:
             - name: certs
               mountPath: /tls
