@@ -25,7 +25,7 @@ jobs:
           version: v3.4.0
 
       - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1.2.0
+        uses: aabouzaid/fix-charts-dir-depth@1d2f81d326fbd4fb710c58a11a5383304fdc94bc
         env:
           charts_dir: "./deploy/"
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
