@@ -128,12 +128,6 @@ spec:
     go mod download
     ```
 
-<<<<<<< HEAD
-1. Run tests with your created domain
-    ```bash
-    TEST_ZONE_NAME="$YOUR_NEW_DOMAIN." go test .
-    ```
-=======
 An example Go test file has been provided in [main_test.go](https://github.com/jetstack/cert-manager-webhook-example/blob/master/main_test.go).
 
 ### Running the full suite with microk8s
