@@ -3,7 +3,9 @@
 This project provides a [cert-manager](https://cert-manager.io) ACME Webhook for [Hetzner DNS](https://hetzner.de/) 
 and is based on the [Example Webhook](https://github.com/jetstack/cert-manager-webhook-example)
 
-This README and the inspiration for this webhook was mostly taken from [Stephan Müllers INWX Webhook](https://gitlab.com/smueller18/cert-manager-webhook-inwx)
+This README and the inspiration for this webhook was mostly taken from [Stephan Müllers INWX Webhook](https://gitlab.com/smueller18/cert-manager-webhook-inwx).
+
+The Helm Chart is automatically published via [github pages](https://mecodia.github.io/cert-manager-webhook-hetzner/).
 
 ## Requirements
 
