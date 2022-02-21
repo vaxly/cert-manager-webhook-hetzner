@@ -6,6 +6,9 @@ and is based on the [Example Webhook](https://github.com/jetstack/cert-manager-w
 This README and the inspiration for this webhook was mostly taken from [Stephan Müllers INWX Webhook](https://gitlab.com/smueller18/cert-manager-webhook-inwx).
 
 The Helm Chart is automatically published via [github pages](https://mecodia.github.io/cert-manager-webhook-hetzner/).
+## Tutorial
+
+https://thedatabaseme.de/2021/12/28/kubernetes-cert-manager-mit-hetzner-dns-nutzen/
 
 ## Requirements
 
